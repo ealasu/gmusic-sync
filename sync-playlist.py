@@ -47,13 +47,13 @@ def _copy_track_metadata(file_name, track):
       'album': 'album', 
       'genre': 'genre', 
       'artist': 'artist', 
-      'albumArtist': 'albumartist',
+      'albumArtist': 'performer',
       'track': 'tracknumber', 
       'disc': 'discnumber', 
       'year': 'date'
     }.iteritems():
       if m_k in track:
-        value = track[m_k]
+        value = str(track[m_k])
         if m_k=='album_image':
           value = self._get_album_image(value)
         if m_k=='track':
@@ -148,12 +148,13 @@ class PlaylistSync:
       if file_name not in local:
         to_add.append((track, file_name))
 
-    for file_name, track in local.iteritems():
-      if file_name not in playlist:
-        to_remove.append((track, file_name))
+    if remove:
+      for file_name, track in local.iteritems():
+        if file_name not in playlist:
+          to_remove.append((track, file_name))
 
-    if confirm and (to_add or (remove and to_remove)):
-      if remove and to_remove:
+    if confirm and (to_add or to_remove):
+      if remove:
         print 'Deleting tracks:'
         for track, file_name in to_remove:
           print '  ' + file_name
@@ -177,12 +178,13 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('playlist', help='name of the playlist')
   parser.add_argument('destination', help="where to sync")
-  parser.add_argument('-f', action='store_true', help="don't confirm")
+  parser.add_argument('--no-confirm', '-f', action='store_true', help="don't confirm")
+  parser.add_argument('--no-remove', '-s', action='store_true', help="dont't delete files")
   args = parser.parse_args()
   
-  ps = PlaylistSync(args.playlist, args.destination)
+  ps = PlaylistSync(args.destination, args.playlist)
   ps.login(username, password)
-  ps.sync(confirm=not args.f)
+  ps.sync(confirm=not args.no_confirm, remove=not args.no_remove)
 
   print 'Done.'
 

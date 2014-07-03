@@ -115,8 +115,25 @@ class PlaylistSync:
             keyring.set_password(APP_NAME, username, password)
 
         device_id = config.get('auth', 'device_id')
+
         if device_id == '':
-            device_id = raw_input('Device ID: ')
+            wc = Webclient()
+            success = wc.login(username, password)
+            if not success:
+                raise Exception('could not log in via Webclient')
+            devices = wc.get_registered_devices()
+            mobile_devices = [d for d in devices if d[u'type'] in (u'PHONE', u'IOS')]
+            if len(mobile_devices) < 1:
+                raise Exception('could not find any registered mobile devices')
+            device_id = mobile_devices[0][u'id']
+            if device_id.startswith(u'0x'):
+                device_id = device_id[2:]
+            
+            config.set('auth', 'device_id', device_id)
+            with open(CONFIG_FILE, 'wb') as f:
+                config.write(f)
+
+        print('Device ID: {}'.format(device_id))
         self.mc.device_id = device_id
 
 
@@ -161,16 +178,16 @@ class PlaylistSync:
         all_playlists = self.mc.get_all_playlists()
         try:
             playlist_id = next(p for p in all_playlists if p['name'] == self.playlist_name)['id']
-        except Exception:
+        except StopIteration:
             raise Exception('playlist "{0}" not found'.format(self.playlist_name))
         all_songs = self.mc.get_all_songs()
         pprint(all_songs[0])
         for p in self.mc.get_all_user_playlist_contents():
             if p['name'] == self.playlist_name:
                 for track in p['tracks']:
-                    pprint(track)
                     song = next(s for s in all_songs if s['id'] == track['trackId'])
-                    pprint(song)
+                    print(u'{album} - {title}'.format(**song))
+                    #pprint(song)
                     yield self.track_file_name(song), song
 
     def add_track(self, track, file_name):

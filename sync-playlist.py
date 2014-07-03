@@ -7,6 +7,7 @@ import keyring
 from ConfigParser import SafeConfigParser
 from pprint import pprint
 import unicodedata
+from collections import OrderedDict
 
 from gmusicapi.clients import Webclient, Musicmanager, Mobileclient
 from mutagen.easyid3 import EasyID3
@@ -242,13 +243,13 @@ class PlaylistSync:
         print 'Searching for local tracks ...'
         local = dict(self.get_local_tracks())
         print 'Getting playlist ...'
-        playlist = dict(self.get_playlist_tracks())
+        playlist = OrderedDict(self.get_playlist_tracks())
 
         to_add = []
         to_remove = []
         to_rename = []
 
-        for file_name, track in sorted(playlist.iteritems()):
+        for file_name, track in playlist.iteritems():
             if file_name not in local and file_name.encode('ascii', 'replace').replace('?','_') not in local:
                 to_add.append((track, file_name))
             elif file_name not in local and file_name.encode('ascii', 'replace').replace('?','_') in local:
@@ -265,6 +266,7 @@ class PlaylistSync:
                 print '  ' + file_name
             print ''
         if to_add:
+            to_add = list(reversed(to_add))
             print 'Adding tracks:'
             for track, file_name in to_add:
                 print '  ' + file_name

@@ -114,12 +114,12 @@ class PlaylistSync:
     
             keyring.set_password(APP_NAME, username, password)
 
+
         device_id = config.get('auth', 'device_id')
 
         if device_id == '':
             wc = Webclient()
-            success = wc.login(username, password)
-            if not success:
+            if not wc.login(username, password):
                 raise Exception('could not log in via Webclient')
             devices = wc.get_registered_devices()
             mobile_devices = [d for d in devices if d[u'type'] in (u'PHONE', u'IOS')]
@@ -177,9 +177,28 @@ class PlaylistSync:
         # return (metadata, local_file_name) for each track in playlist
         all_playlists = self.mc.get_all_playlists()
         try:
-            playlist_id = next(p for p in all_playlists if p['name'] == self.playlist_name)['id']
+            playlist = next(p for p in all_playlists if p['name'] == self.playlist_name)
         except StopIteration:
             raise Exception('playlist "{0}" not found'.format(self.playlist_name))
+        contents = self.mc.get_shared_playlist_contents(playlist['shareToken'])
+        for t in contents:
+            track = t[u'track']
+            if u'id' not in track:
+                track[u'id'] = track[u'storeId']
+            #pprint(track)
+            #raw_input()
+            yield (self.track_file_name(track), track)
+
+        #for p in all_playlists:
+        #    shared = self.mc.get_shared_playlist_contents(p['shareToken'])
+        #    pprint(shared)
+        #for p in self.mc.get_all_user_playlist_contents():
+        #    del p['tracks']
+        #    pprint(p)
+        #    raw_input()
+
+        return
+
         all_songs = self.mc.get_all_songs()
         pprint(all_songs[0])
         for p in self.mc.get_all_user_playlist_contents():
@@ -194,11 +213,13 @@ class PlaylistSync:
         # download track from gmusic, write to file_name
         if not os.path.exists(os.path.dirname(file_name)):
             os.makedirs(os.path.dirname(file_name))
-        if track['kind'] != u'sj#track':
+        if True: # track['kind'] != u'sj#track':
             url = self.mc.get_stream_url(track['id'], self.mc.device_id)
             r = requests.get(url)
+            data = r.content
+            #data = self.wc.get_stream_audio(track['id'])
             with open(file_name, 'wb') as f:
-                f.write(r.content)
+                f.write(data)
             _copy_track_metadata(file_name, track)
         else:
             fn, audio = self.mm.download_song(track['id'])

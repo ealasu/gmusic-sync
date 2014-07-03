@@ -183,8 +183,6 @@ class PlaylistSync:
         contents = self.mc.get_shared_playlist_contents(playlist['shareToken'])
         for t in contents:
             track = t[u'track']
-            if u'id' not in track:
-                track[u'id'] = track[u'storeId']
             #pprint(track)
             #raw_input()
             yield (self.track_file_name(track), track)
@@ -213,8 +211,10 @@ class PlaylistSync:
         # download track from gmusic, write to file_name
         if not os.path.exists(os.path.dirname(file_name)):
             os.makedirs(os.path.dirname(file_name))
-        if True: # track['kind'] != u'sj#track':
-            url = self.mc.get_stream_url(track['id'], self.mc.device_id)
+        if track[u'kind'] != u'sj#track' or u'id' not in track:
+            if u'id' not in track:
+                track[u'id'] = track[u'storeId']
+            url = self.mc.get_stream_url(track[u'id'], self.mc.device_id)
             r = requests.get(url)
             data = r.content
             #data = self.wc.get_stream_audio(track['id'])

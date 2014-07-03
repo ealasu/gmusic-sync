@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 
 import os
 import shutil
@@ -7,7 +8,7 @@ from ConfigParser import SafeConfigParser
 from pprint import pprint
 import unicodedata
 
-from gmusicapi.clients import Webclient, Musicmanager
+from gmusicapi.clients import Webclient, Musicmanager, Mobileclient
 from mutagen.easyid3 import EasyID3
 import requests
 
@@ -81,12 +82,13 @@ class PlaylistSync:
         self.root = root
         self.playlist_name = playlist_name
  
-    def _login_wc(self):
+    def _login_mc(self):
         APP_NAME = 'gmusic-sync-playlist'
         CONFIG_FILE = 'auth.cfg'
 
         config = SafeConfigParser({
-            'username':'',
+            'username': '',
+            'device_id': ''
         })
         config.read(CONFIG_FILE)
         if not config.has_section('auth'):
@@ -97,11 +99,11 @@ class PlaylistSync:
         if username != '':
             password = keyring.get_password(APP_NAME, username)
     
-        if password == None or not self.wc.login(username, password):
+        if password == None or not self.mc.login(username, password):
             while 1:
                 username = raw_input("Username: ")
                 password = getpass("Password: ")
-                if self.wc.login(username, password):
+                if self.mc.login(username, password):
                     break
                 else:
                     print "Sign-on failed."
@@ -112,20 +114,29 @@ class PlaylistSync:
     
             keyring.set_password(APP_NAME, username, password)
 
+        device_id = config.get('auth', 'device_id')
+        if device_id == '':
+            device_id = raw_input('Device ID: ')
+        self.mc.device_id = device_id
+
 
     def login(self):
-        self.wc = Webclient()
-        self._login_wc()
+        self.mc = Mobileclient()
+        self._login_mc()
         self.mm = Musicmanager()
+        #self.mm.perform_oauth()
         self.mm.login()
 
     def track_file_name(self, track):
-        albumartist = track['albumArtist']
+        if 'albumArtist' in track:
+            albumartist = track['albumArtist']
+        else:
+            albumartist = 'Various'
         if not albumartist:
             albumartist = 'Various'
-        file_name = escape_path(u'{track:02d} {name}.mp3'.format(**track))
-        if track.get('totalDiscs', 1) > 1:
-            file_name = u'{disc}-'.format(**track) + file_name
+        file_name = escape_path(u'{trackNumber:02d} {title}.mp3'.format(**track))
+        if track.get('totalDiscCount', 1) > 1:
+            file_name = u'{discNumber}-'.format(**track) + file_name
         return unicodedata.normalize('NFD', os.path.join(self.root, escape_path(albumartist), escape_path(track['album']), file_name))
 
     def get_local_tracks(self):
@@ -147,23 +158,30 @@ class PlaylistSync:
 
     def get_playlist_tracks(self):
         # return (metadata, local_file_name) for each track in playlist
-        all_playlists = self.wc.get_all_playlist_ids()
-        user_playlists = all_playlists['user']
+        all_playlists = self.mc.get_all_playlists()
         try:
-            playlist_id, = user_playlists[self.playlist_name]
-        except KeyError:
+            playlist_id = next(p for p in all_playlists if p['name'] == self.playlist_name)['id']
+        except Exception:
             raise Exception('playlist "{0}" not found'.format(self.playlist_name))
-        for track in self.wc.get_playlist_songs(playlist_id):
-            yield self.track_file_name(track), track
+        all_songs = self.mc.get_all_songs()
+        pprint(all_songs[0])
+        for p in self.mc.get_all_user_playlist_contents():
+            if p['name'] == self.playlist_name:
+                for track in p['tracks']:
+                    pprint(track)
+                    song = next(s for s in all_songs if s['id'] == track['trackId'])
+                    pprint(song)
+                    yield self.track_file_name(song), song
 
     def add_track(self, track, file_name):
         # download track from gmusic, write to file_name
         if not os.path.exists(os.path.dirname(file_name)):
             os.makedirs(os.path.dirname(file_name))
-        if track['type'] == 7:
-            audio = self.wc.get_stream_audio(track['id'])
+        if track['kind'] != u'sj#track':
+            url = self.mc.get_stream_url(track['id'], self.mc.device_id)
+            r = requests.get(url)
             with open(file_name, 'wb') as f:
-                f.write(audio)
+                f.write(r.content)
             _copy_track_metadata(file_name, track)
         else:
             fn, audio = self.mm.download_song(track['id'])
@@ -233,7 +251,7 @@ class PlaylistSync:
             print 'removing track ' + file_name
             self.remove_track(file_name)
         for track, file_name in to_add:
-            print u'adding track: {album} / \n  {name}'.format(**track).encode('utf-8', 'replace')
+            print u'adding track: {album} / \n  {title}'.format(**track).encode('utf-8', 'replace')
             self.add_track(track, file_name)
 
 if __name__ == '__main__':
